@@ -1,5 +1,9 @@
 pipeline {
     agent any
+    environment {
+        //be sure to replace "willbla" with your own Docker Hub username
+        DOCKER_IMAGE_NAME = "rs2687/train-schedule"
+    }
     stages {
         stage('Build') {
             steps {
@@ -14,9 +18,9 @@ pipeline {
             }
             steps {
                 script {
-                    app = docker.build("rs2687/train-schedule")
+                    app = docker.build(DOCKER_IMAGE_NAME)
                     app.inside {
-                        sh 'echo $(curl localhost:8080)'
+                        sh 'echo Hello, World!'
                     }
                 }
             }
@@ -41,18 +45,11 @@ pipeline {
             steps {
                 input 'Deploy to Production?'
                 milestone(1)
-                withCredentials([usernamePassword(credentialsId: 'webserver_login', usernameVariable: 'USERNAME', passwordVariable: 'USERPASS')]) {
-                    script {
-                        sh "sshpass -p '$USERPASS' -v ssh -o StrictHostKeyChecking=no $USERNAME@$prod_ip \"docker pull rs2687/train-schedule:${env.BUILD_NUMBER}\""
-                        try {
-                            sh "sshpass -p '$USERPASS' -v ssh -o StrictHostKeyChecking=no $USERNAME@$prod_ip \"docker stop train-schedule\""
-                            sh "sshpass -p '$USERPASS' -v ssh -o StrictHostKeyChecking=no $USERNAME@$prod_ip \"docker rm train-schedule\""
-                        } catch (err) {
-                            echo: 'caught error: $err'
-                        }
-                        sh "sshpass -p '$USERPASS' -v ssh -o StrictHostKeyChecking=no $USERNAME@$prod_ip \"docker run --restart always --name train-schedule -p 8080:8080 -d willbla/train-schedule:${env.BUILD_NUMBER}\""
-                    }
-                }
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube.yml',
+                    enableConfigSubstitution: true
+                )
             }
         }
     }
